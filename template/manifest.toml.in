@@ -1,0 +1,9 @@
+manifest_version = 1
+id          = "@ID@"
+name        = "@NAME@"
+version     = "1.0.0"
+arch        = "aarch64"
+exec        = "bin/@SLUG@"
+icon        = "icon.png"
+# display : écran | storage : /data | gpu : OpenGL ES (partage le réseau) | audio | network | files | system | install
+permissions = ["display", "storage", "gpu"]

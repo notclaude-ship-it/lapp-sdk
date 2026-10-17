@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""lapp-new : crée un nouveau projet d'application .lapp basé sur lapp-sdk.
+
+Usage : lapp-new <id> [--name NOM] [--dir DOSSIER] [--no-icon]
+  ex.   lapp-new com.moi.notes --name Notes
+"""
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+SDK = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TPL = os.path.join(SDK, 'template')
+
+
+def die(msg):
+    print('lapp-new : ' + msg, file=sys.stderr)
+    sys.exit(1)
+
+
+def main():
+    ap = argparse.ArgumentParser(description='Crée un projet d\'app .lapp')
+    ap.add_argument('id', help='identifiant (a-z, 0-9, . - _), ex. com.moi.notes')
+    ap.add_argument('--name', help='nom affiché (défaut : dernier élément de l\'id)')
+    ap.add_argument('--dir', help='dossier du projet (défaut : ./<dernier élément de l\'id>)')
+    ap.add_argument('--no-icon', action='store_true', help='ne pas générer icon.png')
+    a = ap.parse_args()
+
+    if not re.fullmatch(r'[a-z0-9._-]{1,128}', a.id) or '..' in a.id:
+        die('id invalide (a-z, 0-9, \'.\', \'-\', \'_\' ; pas de \'..\')')
+    slug = a.id.split('.')[-1].replace('_', '-')
+    if not re.fullmatch(r'[a-z][a-z0-9-]*', slug):
+        die(f"le dernier élément de l'id ('{slug}') doit commencer par une lettre (a-z, 0-9, '-')")
+    name = (a.name or slug.capitalize()).replace('"', '').replace('\\', '').strip() or slug
+    dest = os.path.abspath(a.dir or slug)
+    if os.path.exists(dest):
+        die(f'{dest} existe déjà')
+
+    subst = {'@ID@': a.id, '@NAME@': name, '@SLUG@': slug, '@SDK@': SDK}
+
+    def render(src, dst):
+        txt = open(src, encoding='utf-8').read()
+        for k, v in subst.items():
+            txt = txt.replace(k, v)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        open(dst, 'w', encoding='utf-8').write(txt)
+
+    render(os.path.join(TPL, 'Cargo.toml.in'), os.path.join(dest, 'Cargo.toml'))
+    render(os.path.join(TPL, 'manifest.toml.in'), os.path.join(dest, 'manifest.toml'))
+    render(os.path.join(TPL, 'src', 'main.rs.in'), os.path.join(dest, 'src', 'main.rs'))
+    os.makedirs(os.path.join(dest, '.cargo'))
+    shutil.copy(os.path.join(TPL, 'cargo-config.toml'), os.path.join(dest, '.cargo', 'config.toml'))
+    # mêmes versions de dépendances que le SDK (cargo ajoutera le paquet de l'app)
+    lock = os.path.join(SDK, 'Cargo.lock')
+    if os.path.exists(lock):
+        shutil.copy(lock, os.path.join(dest, 'Cargo.lock'))
+    with open(os.path.join(dest, '.gitignore'), 'w') as f:
+        f.write('target/\nstage/\n*.lapp\n.lapp-data/\n')
+
+    if not a.no_icon:
+        env = dict(os.environ)
+        env['PATH'] = os.path.expanduser('~/.cargo/bin') + os.pathsep + env.get('PATH', '')
+        r = subprocess.run(['cargo', 'run', '--quiet', '--', '--icon', 'icon.png'], cwd=dest, env=env)
+        if r.returncode != 0:
+            print("lapp-new : icône non générée (voir l'erreur ci-dessus) ; écrivez icon.png à la main", file=sys.stderr)
+
+    print(f'Projet créé : {dest}')
+    print(f'  cd {dest}')
+    print(f'  cargo run -- --screenshot out.png   # aperçu hors écran')
+    print(f'  {SDK}/tools/lapp-build              # compile (aarch64) et produit le .lapp')
+
+
+main()

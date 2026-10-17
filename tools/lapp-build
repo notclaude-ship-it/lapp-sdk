@@ -1,0 +1,42 @@
+#!/bin/sh
+# lapp-build : compile (aarch64) et empaquette une app en .lapp signé.
+#
+# Usage : lapp-build [dossier-du-projet]      (défaut : dossier courant)
+# Variables : LAPP (binaire lapp), LAPP_KEY (clé de signature, défaut ~/.lapp/dev.key),
+#             LAPP_COMP (compression squashfs, xz par défaut)
+set -e
+HERE="$(cd "$(dirname "$0")" && pwd)"
+cd "${1:-.}"
+export PATH="$HOME/.cargo/bin:$PATH"
+
+[ -f manifest.toml ] || { echo "lapp-build : manifest.toml introuvable dans $(pwd)" >&2; exit 1; }
+LAPP="${LAPP:-$HERE/../../target/release/lapp}"
+[ -x "$LAPP" ] || LAPP="$(command -v lapp || true)"
+[ -x "$LAPP" ] || { echo "lapp-build : binaire lapp introuvable (cargo build --release dans ~/lapp, ou LAPP=...)" >&2; exit 1; }
+KEY="${LAPP_KEY:-$HOME/.lapp/dev.key}"
+[ -f "$KEY" ] || { echo "lapp-build : clé $KEY introuvable (lapp keygen dev)" >&2; exit 1; }
+
+field() { sed -n "s/^$1[[:space:]]*=[[:space:]]*\"\(.*\)\".*/\1/p" manifest.toml | head -n 1; }
+EXEC="$(field exec)"
+ICON="$(field icon)"
+ID="$(field id)"
+VERSION="$(field version)"
+BIN="$(basename "$EXEC")"
+[ -n "$EXEC" ] && [ -n "$ID" ] && [ -n "$VERSION" ] || { echo "lapp-build : manifest.toml incomplet (id, version, exec)" >&2; exit 1; }
+
+cargo build --release --target aarch64-unknown-linux-gnu
+
+rm -rf stage
+mkdir -p "stage/$(dirname "$EXEC")"
+cp "target/aarch64-unknown-linux-gnu/release/$BIN" "stage/$EXEC"
+cp manifest.toml stage/
+if [ -n "$ICON" ]; then
+  if [ -f "$ICON" ]; then cp "$ICON" "stage/$ICON"; else echo "lapp-build : icône $ICON absente (cargo run -- --icon $ICON)" >&2; fi
+fi
+[ -d assets ] && cp -r assets stage/assets
+
+OUT="$ID-$VERSION.lapp"
+LAPP_COMP="${LAPP_COMP:-xz}" "$LAPP" pack stage --key "$KEY" --out "$OUT"
+"$LAPP" info "$OUT"
+echo
+echo "Install : sudo $LAPP install $OUT"
