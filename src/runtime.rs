@@ -22,6 +22,7 @@ use winit::window::{Window, WindowId};
 
 use crate::gfx::{Gfx, GlGfx};
 use crate::input::{Event, Key};
+use crate::kbd::KbdClient;
 use crate::text::{self, Fonts, Text};
 use crate::ui::{rgba, Theme};
 
@@ -90,6 +91,8 @@ pub struct Ctx {
     again: Cell<bool>,
     wake: Cell<Option<Instant>>,
     toast: RefCell<Option<(String, Instant)>>,
+    kbd_req: Cell<Option<u32>>,
+    kbd_h: Cell<u32>,
 }
 
 impl Ctx {
@@ -103,6 +106,8 @@ impl Ctx {
             again: Cell::new(false),
             wake: Cell::new(None),
             toast: RefCell::new(None),
+            kbd_req: Cell::new(None),
+            kbd_h: Cell::new(0),
         }
     }
 
@@ -142,6 +147,20 @@ impl Ctx {
             Some(w) if w <= at => {}
             _ => self.wake.set(Some(at)),
         }
+    }
+
+    /// Clavier virtuel de lapp-home : `1` = lettres, `2` = chiffres/symboles, `0` = le masquer.
+    /// Appeler de nouveau avec `1` ou `2` le réaffiche s'il a été masqué (toucher un champ de saisie).
+    /// Les touches arrivent ensuite en `Event::Key` (`Key::Char`, `Key::Back` = effacer, `Key::Enter`, `Key::Space`).
+    /// Sans effet hors de lapp-home (bureau, captures).
+    pub fn keyboard(&self, mode: u32) {
+        self.kbd_req.set(Some(mode));
+    }
+
+    /// Hauteur (px) occupée par le clavier virtuel en bas de l'écran, 0 s'il est masqué : à retrancher de la
+    /// zone utile pour que le champ de saisie reste visible.
+    pub fn keyboard_height(&self) -> f32 {
+        self.kbd_h.get() as f32
     }
 
     /// Affiche un message bref en bas de l'écran (2,5 s).
@@ -275,6 +294,9 @@ pub fn run<A: App>(cfg: Config, mut app: A) {
         cursor: (0.0, 0.0),
         press: None,
         last_frame: Instant::now(),
+        kbd: None,
+        kbd_tried: false,
+        kbd_on: false,
     };
     if let Err(e) = el.run_app(&mut runner) {
         eprintln!("{} : {e}", runner.cfg.title);
@@ -311,6 +333,9 @@ struct Runner<A: App> {
     cursor: (f32, f32),
     press: Option<Press>,
     last_frame: Instant,
+    kbd: Option<KbdClient>,
+    kbd_tried: bool,
+    kbd_on: bool,
 }
 
 impl<A: App> Runner<A> {
@@ -369,6 +394,36 @@ impl<A: App> Runner<A> {
         }
     }
 
+    /// Transmet la demande de clavier à lapp-home (propriété X11) et relit sa hauteur.
+    fn sync_kbd(&mut self, window: &Window) {
+        let req = self.ctx.kbd_req.take();
+        if req.is_none() && !self.kbd_on && self.ctx.kbd_h.get() == 0 {
+            return;
+        }
+        if self.kbd.is_none() && !self.kbd_tried {
+            self.kbd_tried = true;
+            self.kbd = KbdClient::connect();
+        }
+        let Some(k) = self.kbd.as_ref() else { return };
+        let id = match window.window_handle().ok().map(|h| h.as_raw()) {
+            Some(winit::raw_window_handle::RawWindowHandle::Xlib(h)) => h.window as u32,
+            Some(winit::raw_window_handle::RawWindowHandle::Xcb(h)) => h.window.get(),
+            _ => return,
+        };
+        if let Some(m) = req {
+            k.set(id, m);
+            self.kbd_on = m != 0;
+        }
+        let h = k.height(id);
+        if h != self.ctx.kbd_h.get() {
+            self.ctx.kbd_h.set(h);
+            window.request_redraw();
+        }
+        if self.kbd_on || h != 0 {
+            self.ctx.redraw_in(Duration::from_millis(200));
+        }
+    }
+
     fn redraw(&mut self) {
         let now = Instant::now();
         let dt = (now - self.last_frame).as_secs_f32().min(0.05);
@@ -380,6 +435,7 @@ impl<A: App> Runner<A> {
         self.ctx.size.set((sz.width, sz.height));
         self.ctx.again.set(false);
         self.ctx.wake.set(None);
+        self.sync_kbd(&window);
         self.app.tick(&self.ctx, dt);
 
         if let Some(mut gs) = self.gl.take() {
@@ -410,6 +466,7 @@ impl<A: App> Runner<A> {
             }
             self.cpu = Some(g);
         }
+        self.sync_kbd(&window);
         if self.ctx.again.get() {
             window.request_redraw();
         }

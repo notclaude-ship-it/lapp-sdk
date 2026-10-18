@@ -31,6 +31,7 @@
 
 mod gfx;
 mod input;
+mod kbd;
 mod runtime;
 mod store;
 mod sys;

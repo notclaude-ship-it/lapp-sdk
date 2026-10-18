@@ -255,6 +255,22 @@ impl Gfx {
         self.blit(key, x, y, alpha);
     }
 
+    /// Comme `image`, mais remplace l'image déjà en cache sous `key` (images qui changent : trames vidéo).
+    pub fn replace_image(&mut self, key: &str, pm: &Pixmap, x: f32, y: f32, alpha: f32) {
+        match self {
+            Gfx::Cpu { imgs, .. } => {
+                imgs.insert(key.to_string(), pm.clone());
+            }
+            Gfx::Gl(g) => {
+                if let Some(e) = g.tex.remove(key) {
+                    unsafe { g.gl.delete_texture(e.t) };
+                }
+                g.upload(key, pm);
+            }
+        }
+        self.blit(key, x, y, alpha);
+    }
+
     pub fn canvas(&self) -> Option<&Pixmap> {
         match self {
             Gfx::Cpu { canvas, .. } => Some(canvas),
