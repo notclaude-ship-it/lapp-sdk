@@ -29,6 +29,7 @@
 //! }
 //! ```
 
+pub mod audio;
 mod gfx;
 mod input;
 mod kbd;

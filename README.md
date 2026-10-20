@@ -112,6 +112,18 @@ Dessin seul, sans état : l'app garde l'état (bouton pressé, ligne sélectionn
 - `Rect` : `contains`, `inset`, `split_top`, `center`, `right`, `bottom`
 - `ctx.toast("message")` : bulle de 2,5 s en bas de l'écran
 
+## Audio (`lapp_sdk::audio`)
+
+Nécessite la permission `audio` dans le manifeste (sockets PipeWire / PulseAudio).
+
+- `AudioOut::new("Nom", 48_000, 2)` : flux PCM S16 entrelacé vers le serveur audio de l'hôte, via `libpulse-simple` chargée à l'exécution (aucune dépendance de compilation ; sans bibliothèque ou sans serveur, `write` renvoie `false` et l'app continue sans son).
+  - `write(&[i16])` / `write_bytes(&[u8])` : bloque tant que le tampon est plein (appeler depuis un thread dédié ou un callback de décodeur)
+  - `flush()` : jette l'audio en attente (seek, arrêt) ; `drain()` : attend la fin ; `.latency_ms(n)` : latence cible (150 par défaut)
+  - `Send` : peut être déplacé dans un autre thread
+- `audio::play_file(path) -> Option<Child>` : lance `pw-play`/`paplay`/`aplay`/`mpv`/`ffplay` sur un fichier son (`child.kill()` pour arrêter).
+
+Exemple avec libvlc (callbacks audio) : voir `vlc.rs` de l'app VLC (`libvlc_audio_set_callbacks` + `libvlc_audio_set_format("S16N", 48000, 2)`, un `AudioOut` en `opaque`).
+
 ## Données et ressources
 
 - `Store::open("state.conf")` : clé/valeur persistant dans `/data` (`get`, `get_i64`, `get_f32`, `get_bool`, `set`, `remove`), écriture atomique.
@@ -137,5 +149,6 @@ L'app n'a que ce que son manifeste demande (liste complète dans `../README.md`)
 - `src/text.rs` : polices, styles de texte, rastérisation
 - `src/input.rs` : `Event`, `Key`, `Scroller`
 - `src/ui.rs` : couleurs, thème, `Rect`, composants
+- `src/audio.rs` : sortie audio (`AudioOut`, `play_file`)
 - `src/store.rs`, `src/sys.rs` : stockage et environnement
 - `template/` et `tools/` : modèle de projet, `lapp-new`, `lapp-build`
