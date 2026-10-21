@@ -93,6 +93,7 @@ pub struct Ctx {
     toast: RefCell<Option<(String, Instant)>>,
     kbd_req: Cell<Option<u32>>,
     kbd_h: Cell<u32>,
+    scale_ovr: Cell<Option<f32>>,
 }
 
 impl Ctx {
@@ -108,6 +109,7 @@ impl Ctx {
             toast: RefCell::new(None),
             kbd_req: Cell::new(None),
             kbd_h: Cell::new(0),
+            scale_ovr: Cell::new(crate::sys::scale_override()),
         }
     }
 
@@ -121,9 +123,17 @@ impl Ctx {
     pub fn height(&self) -> f32 {
         self.size.get().1 as f32
     }
-    /// Facteur d'échelle d'interface : 1.0 pour un écran de 272 px de large (celui de l'appareil).
+    /// Facteur d'échelle d'interface (« dpi ») : 1.0 pour un écran de 272 px de large (celui de l'appareil).
+    ///
+    /// Commun à lapp-home et aux apps : lapp-home exporte son échelle dans `LAPP_SCALE` à chaque app qu'il lance
+    /// (réglable par `/etc/lapp/scale` ou `lapp-home --scale X`), et `--scale X` la force en ligne de commande.
+    /// Sans cela, l'échelle est `min(largeur, hauteur) / 272` (identique à l'ancienne en portrait).
     pub fn scale(&self) -> f32 {
-        self.size.get().0 as f32 / 272.0
+        if let Some(s) = self.scale_ovr.get() {
+            return s;
+        }
+        let (w, h) = self.size.get();
+        w.min(h) as f32 / 272.0
     }
     pub fn title(&self) -> &str {
         &self.title
@@ -242,6 +252,7 @@ pub fn render_png<A: App>(app: &mut A, cfg: &Config, size: (u32, u32), path: &st
 /// Écrit l'icône de l'app (128x128) dans un PNG.
 pub fn icon_png<A: App>(app: &mut A, cfg: &Config, path: &str) -> Result<(), String> {
     let ctx = Ctx::new(cfg);
+    ctx.scale_ovr.set(None); // l'icône est toujours dessinée à sa propre taille
     let n = 128;
     ctx.size.set((n, n));
     let mut g = Gfx::new_cpu(n, n);

@@ -99,7 +99,7 @@ Styles : `.bold()`, `.mono()`, `.color()`, `.left()/.center()/.right()`, `.max_w
 
 ### Taille et échelle
 
-L'écran de l'appareil fait 272×480. `ctx.scale()` vaut `largeur / 272` : multipliez vos dimensions "en points" par `ctx.scale()` pour rester proportionnel sur d'autres tailles (`--size 720x1280`).
+L'écran de l'appareil fait 272×480. `ctx.scale()` est le « dpi » commun à lapp-home et aux apps : lapp-home exporte son échelle dans `LAPP_SCALE` à chaque app qu'il lance (`/etc/lapp/scale` ou `lapp-home --scale X`), et `--scale X` / `LAPP_SCALE=X` la forcent à la main ; sans cela elle vaut `min(largeur, hauteur) / 272`. Multipliez vos dimensions "en points" par `ctx.scale()` pour rester proportionnel sur d'autres tailles (`--size 720x1280`).
 
 ## Composants (`lapp_sdk::ui`)
 

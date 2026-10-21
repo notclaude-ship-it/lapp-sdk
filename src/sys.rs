@@ -69,6 +69,16 @@ pub fn arg_value(key: &str) -> Option<String> {
     args.iter().position(|a| a == key).and_then(|i| args.get(i + 1)).cloned()
 }
 
+/// Échelle d'interface imposée (dpi commun à lapp-home et aux apps) : `--scale X`, sinon la variable
+/// `LAPP_SCALE`, que lapp-home exporte à chaque app qu'il lance. `None` : l'app calcule son échelle toute seule.
+pub fn scale_override() -> Option<f32> {
+    let parse = |s: &str| s.trim().parse::<f32>().ok().filter(|v| v.is_finite() && *v > 0.0).map(|v| v.clamp(0.5, 8.0));
+    arg_value("--scale")
+        .as_deref()
+        .and_then(parse)
+        .or_else(|| std::env::var("LAPP_SCALE").ok().as_deref().and_then(parse))
+}
+
 /// Vrai si l'option `--drapeau` est présente.
 pub fn arg_flag(key: &str) -> bool {
     std::env::args().skip(1).any(|a| a == key)

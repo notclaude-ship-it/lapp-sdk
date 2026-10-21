@@ -686,6 +686,7 @@ dependencies = [
  "softbuffer",
  "tiny-skia",
  "winit",
+ "x11rb",
 ]
 
 [[package]]
